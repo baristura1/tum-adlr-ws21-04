@@ -13,24 +13,28 @@ class goalFinder(gym.GoalEnv):
     def __init__(self, gridSize):
         super(goalFinder, self).__init__()
         self.gridSize = gridSize
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Box(low=np.array([-1,-1]), high=np.array([1,1]))
         self.observation_space = spaces.Dict({"observation": spaces.Box(low=np.array([0.0,0.0]), high=np.array([self.gridSize-1, self.gridSize-1])),
                                               "achieved_goal": spaces.Box(low=np.array([0.0,0.0]), high=np.array([self.gridSize-1, self.gridSize-1])),
                                               "desired_goal": spaces.Box(low=np.array([0.0,0.0]), high=np.array([self.gridSize-1, self.gridSize-1]))})
         self.obstacles = np.array([[4, 4], [4, 5], [5, 4], [5, 5], [5, 6], [6, 5], [6, 6]], dtype=np.float32) #7 blocks
-        self.state = None
+        self.state = np.array([0.0, 0.0], dtype=np.float32)
         self.goal = np.array([self.gridSize-1, self.gridSize-1], dtype=np.float32)
-        self.start_state = np.array([0.0,0.0], dtype=np.float32)
+        self.start_state = np.array([0.0, 0.0], dtype=np.float32)
         self.reset()
 
     def reset(self):
         #super().reset()
-        self.state = self.start_state
+        self.state = np.array([0.0, 0.0], dtype=np.float32)
         self.goal = self.goal
         ob = self.get_obs()
         return ob
 
     def step(self, action):
+        self.state[0] += action[0]
+        self.state[1] += action[1]
+
+        """
         if action == 0: #right
             self.state = np.add(self.state, np.array([1.0, 0.0]))
         elif action == 1: #left
@@ -41,7 +45,7 @@ class goalFinder(gym.GoalEnv):
             self.state = np.add(self.state, np.array([0.0, -1.0]))
         else:
             raise ValueError("INVALID ACTION")
-
+        """
         self.state = np.clip(self.state, 0, self.gridSize-1)
         ###implement clipping
         info = {"collision": 1} if self.check_collision() else {"collision": 0}
@@ -99,12 +103,13 @@ check_env(env, warn=True)
 
 obs = env.reset()
 #print(obs)
-model = A2C('MultiInputPolicy', env, verbose=0).learn(50000)
-env.reset()
+model = PPO('MultiInputPolicy', env, verbose=0).learn(50000)
+obs = env.reset()
 n_steps = 50
 
-
 for step in range(n_steps):
+    if step == 0:
+        obs = env.reset()
     action, _ = model.predict(obs, deterministic=False)
     print("Step {}".format(step + 1))
     print("Action: ", action)
@@ -116,8 +121,8 @@ for step in range(n_steps):
         env.reset()
         print("Goal reached!", "reward=", reward)
         break
-"""
 
+"""
 print(env.observation_space["achieved_goal"])
 print(env.observation_space.spaces["achieved_goal"])
 env.observation_space.spaces["achieved_goal"] = [0.0,0.0]
