@@ -29,18 +29,10 @@ def normalize(x, return_scalers=False):
         return x_norm
 
 
-def generate_random_basis(n_points=1000, n_dims=3, radius=1.0, random_seed=13):
+def generate_random_basis(n_points=1000, n_dims=3, gridSize=1.0, random_seed=13):
 
     np.random.seed(random_seed)
-    # sample point from d-sphere
-    x = np.random.normal(size=[n_points, n_dims])
-    x_norms = np.sqrt(np.sum(np.square(x), axis=1)).reshape([-1, 1])
-    x_unit = x / x_norms
-
-    # now sample radiuses uniformly
-    r = np.random.uniform(size=[n_points, 1])
-    u = np.power(r, 1.0 / n_dims)
-    x = radius * x_unit * u
+    x = np.random.uniform(low=0.0, high=gridSize - 1, size=[n_points, n_dims])  # * (gridSize - 1)
     np.random.seed(None)
 
     return x
