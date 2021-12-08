@@ -1,4 +1,3 @@
-import numpy
 import numpy as np
 import gym
 from gym import spaces
@@ -7,6 +6,7 @@ from stable_baselines3 import A2C, PPO
 from collections import OrderedDict
 import cv2
 import time
+from datetime import datetime
 from bps import *
 
 
@@ -25,9 +25,9 @@ class GoalFinder(gym.GoalEnv):
                                               "achieved_goal": spaces.Box(low=0.0, high=self.gridSize-1,
                                                                         shape=(2,), dtype=np.float32),
                                               "desired_goal": spaces.Box(low=np.array([0.0, 0.0]),
-                                                                         high=np.array([self.gridSize-1, self.gridSize-1])),
-                                              "obstacles": spaces.Box(low=0.0, high=self.gridSize-1,
-                                                                      shape=(self.num_obstacles*2,), dtype=np.float32)
+                                                                         high=np.array([self.gridSize-1, self.gridSize-1]))#,
+                                              #"obstacles": spaces.Box(low=0.0, high=self.gridSize-1,
+                                              #                        shape=(self.num_obstacles*2,), dtype=np.float32)
                                               })
         self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2, radius=10)
         self.agent_state = None
@@ -36,10 +36,12 @@ class GoalFinder(gym.GoalEnv):
         self.obstacles = None
         self.start_state = None
         self.timesteps = timesteps
-        self.object_size = 0.1
+        self.object_size = 0.2
         self.current_step = 0
         self.fourcc = cv2.VideoWriter_fourcc(*'DIVX')
         self.out = cv2.VideoWriter('output1m.avi', self.fourcc, 10.0, (400, 400))
+        self.punishment = - 0.2
+        self.payout = 100
         self.reset()
 
 
@@ -48,7 +50,7 @@ class GoalFinder(gym.GoalEnv):
         basis = self.basis_pts
         self.current_step += 1
         self.agent_state = self.observation_space["achieved_goal"].sample()
-        self.obstacles = self.observation_space["obstacles"].sample()
+        self.obstacles = np.random.rand(self.num_obstacles*2,)*9
         self.goal = self.observation_space["desired_goal"].sample()
         collisions = [self.check_collision(self.obstacles[i:i+2], self.goal) for i in (np.arange(self.num_obstacles))*2]
 
@@ -59,7 +61,6 @@ class GoalFinder(gym.GoalEnv):
         self.obs_state = encode(np.expand_dims(self.obstacles.reshape((self.num_obstacles, 2)), axis=0),
                                 n_bps_points=self.num_bps, custom_basis=basis)
         self.obs_state = np.squeeze(np.transpose(self.obs_state), axis=-1)
-
         print(f"Sampling done: {self.current_step}/{self.timesteps}")
         ob = self.get_obs()
 
@@ -70,43 +71,43 @@ class GoalFinder(gym.GoalEnv):
         self.agent_state[1] += action[1]
         self.agent_state = np.clip(self.agent_state, 0, self.gridSize - 1)
 
-        info = {"collision": 0}
+        info = {"collision": 0,
+                "similarity": 0}
+        similarity = encode(np.expand_dims(self.agent_state.reshape((1, 2)), axis=0),
+                            n_bps_points=self.num_bps, custom_basis=self.basis_pts)
+        info["similarity"] = similarity
 
         for i in (np.arange(self.num_obstacles))*2:
             if np.linalg.norm(self.agent_state - self.obstacles[i:i+2]) <= 2 * self.object_size:
                 info["collision"] = 1
 
-
         obs = self.get_obs()
         reward = self.compute_reward(obs["achieved_goal"], obs["desired_goal"], info)
-        done = True if (np.linalg.norm(obs["achieved_goal"] - obs["desired_goal"]) <= 0.5) else False
-
+        done = True if (np.linalg.norm(obs["achieved_goal"] - obs["desired_goal"]) <= 0.6) else False
+        #print(reward)
         return obs, reward, done, info
 
     def compute_reward(self, observation, desired_goal, info):
-        if info["collision"] == 1:
-            return float(-100)
-        elif np.linalg.norm(observation - desired_goal) <= 0.5:
-            return float(1000)
-        else:
-            return float(-np.linalg.norm(observation - desired_goal)) * 10
+
+        return self.punishment * np.linalg.norm(np.transpose(info["similarity"]) - np.expand_dims(self.obs_state, axis=-1), ord=np.inf) + \
+               int(np.linalg.norm(observation - desired_goal) <= 0.6) * self.payout
 
     def render(self, mode="human"):
         image = np.ones((400, 400, 3), dtype=np.uint8) * 255
         image = cv2.circle(img=image,
                            center=(int(self.agent_state[0] * 40), int(self.agent_state[1] * 40)),
-                           radius=4,
+                           radius=8,
                            color=(255, 0, 0),
                            thickness=-1)
         image = cv2.circle(img=image,
                            center=(int(self.goal[0] * 40), int(self.goal[1] * 40)),
-                           radius=4,
+                           radius=8,
                            color=(0, 0, 255),
                            thickness=-1)
         for i in (np.arange(self.num_obstacles))*2:
             image = cv2.circle(img=image,
                                center=(int(self.obstacles[i] * 40), int(self.obstacles[i+1] * 40)),
-                               radius=4,
+                               radius=8,
                                color=(0, 255, 0),
                                thickness=-1)
         cv2.imshow(":D", image)
@@ -120,8 +121,9 @@ class GoalFinder(gym.GoalEnv):
     def get_obs(self):
         return OrderedDict([("observation", self.obs_state.copy()),
                             ("achieved_goal", self.agent_state.copy()),
-                            ("desired_goal", self.goal.copy()),
-                            ("obstacles", self.obstacles.copy())])
+                            ("desired_goal", self.goal.copy())#,
+                            #("obstacles", self.obstacles.copy())
+                            ])
 
     def check_collision(self, arr1, arr2, sampling=True):
         if sampling:
@@ -130,8 +132,8 @@ class GoalFinder(gym.GoalEnv):
             return np.linalg.norm(arr1 - arr2) >= 2 * self.object_size
 
 
-timesteps = 550000
-env = GoalFinder(gridSize=10, num_obstacles=10, timesteps=timesteps, num_bps=10)
+timesteps = 500000
+env = GoalFinder(gridSize=10, num_obstacles=10, timesteps=timesteps, num_bps=25)
 
 #check_env(env, warn=True)
 
@@ -139,13 +141,16 @@ obs = env.reset()
 model = PPO('MultiInputPolicy', env, verbose=0).learn(timesteps)
 frames = []
 n_steps = 30
-n_runs = 5
+n_runs = 5 + 5
 n_success = 0
 n_collision = 0
 for run in range(n_runs):
     obs = env.reset()
     for step in range(n_steps):
-        action, _ = model.predict(obs, deterministic=True)
+        if step < 6:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
         print("###########################STEP {}################################".format(step + 1))
         print("Action: ", action)
         print("******************************************************************")
@@ -172,8 +177,37 @@ for run in range(n_runs):
 
 env.out.release()
 
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
 
 print("\n\n########################## END RESULT ###############################")
 print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
 print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: {env.gridSize}, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
 print("#####################################################################\n\n")
+
+with open('logs.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: {env.gridSize}, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+"""
+OLD REWARD:
+
+if info["collision"] == 1:
+    return float(-100)
+elif np.linalg.norm(observation - desired_goal) <= 0.5:
+    return float(1000)
+else:
+    return float(-np.linalg.norm(observation - desired_goal)) * 10
+
+"""
