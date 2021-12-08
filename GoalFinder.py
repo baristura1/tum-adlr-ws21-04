@@ -29,7 +29,7 @@ class GoalFinder(gym.GoalEnv):
                                               #"obstacles": spaces.Box(low=0.0, high=self.gridSize-1,
                                               #                        shape=(self.num_obstacles*2,), dtype=np.float32)
                                               })
-        self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2, radius=10)
+        self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2, gridSize=self.gridSize)
         self.agent_state = None
         self.obs_state = None
         self.goal = None
@@ -110,6 +110,12 @@ class GoalFinder(gym.GoalEnv):
                                radius=8,
                                color=(0, 255, 0),
                                thickness=-1)
+        for i in range(self.num_bps):
+            image = cv2.circle(img=image,
+                               center=(int(self.basis_pts[i][0] * 40), int(self.basis_pts[i][1] * 40)),
+                               radius=1,
+                               color=(0, 0, 0),
+                               thickness=-1)
         cv2.imshow(":D", image)
         self.out.write(image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -133,7 +139,7 @@ class GoalFinder(gym.GoalEnv):
 
 
 timesteps = 500000
-env = GoalFinder(gridSize=10, num_obstacles=10, timesteps=timesteps, num_bps=25)
+env = GoalFinder(gridSize=11, num_obstacles=10, timesteps=timesteps, num_bps=25)
 
 #check_env(env, warn=True)
 
@@ -189,7 +195,7 @@ print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf nor
 print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
 print("#####################################################################\n\n")
 
-with open('logs.txt', 'a') as logs:
+with open('logs_marc.txt', 'a') as logs:
     logs.write("\n\n########################## END RESULT ###############################\n")
     logs.write(rundatestr)
     logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
