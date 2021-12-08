@@ -29,10 +29,10 @@ def normalize(x, return_scalers=False):
         return x_norm
 
 
-def generate_random_basis(n_points=1000, n_dims=3, gridSize=1.0, random_seed=13):
+def generate_random_basis(n_points=1000, n_dims=3, gridSize=10, random_seed=13):
 
     np.random.seed(random_seed)
-    x = np.random.uniform(low=0.0, high=gridSize - 1, size=[n_points, n_dims])  # * (gridSize - 1)
+    x = np.random.uniform(low=0.0, high=gridSize, size=[n_points, n_dims])  # * (gridSize - 1)
     np.random.seed(None)
 
     return x

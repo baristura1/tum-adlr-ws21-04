@@ -20,12 +20,12 @@ class GoalFinder(gym.GoalEnv):
 
         self.action_space = spaces.Box(low=np.array([-1, -1]), high=np.array([1, 1]), dtype=np.float32)
 
-        self.observation_space = spaces.Dict({"observation": spaces.Box(low=0.0, high=self.gridSize-1,
+        self.observation_space = spaces.Dict({"observation": spaces.Box(low=0.0, high=self.gridSize,
                                                                         shape=(self.num_bps,), dtype=np.float32),
-                                              "achieved_goal": spaces.Box(low=0.0, high=self.gridSize-1,
+                                              "achieved_goal": spaces.Box(low=0.0, high=self.gridSize,
                                                                         shape=(2,), dtype=np.float32),
                                               "desired_goal": spaces.Box(low=np.array([0.0, 0.0]),
-                                                                         high=np.array([self.gridSize-1, self.gridSize-1]))#,
+                                                                         high=np.array([self.gridSize, self.gridSize]))#,
                                               #"obstacles": spaces.Box(low=0.0, high=self.gridSize-1,
                                               #                        shape=(self.num_obstacles*2,), dtype=np.float32)
                                               })
@@ -69,7 +69,7 @@ class GoalFinder(gym.GoalEnv):
     def step(self, action):
         self.agent_state[0] += action[0]
         self.agent_state[1] += action[1]
-        self.agent_state = np.clip(self.agent_state, 0, self.gridSize - 1)
+        self.agent_state = np.clip(self.agent_state, 0, self.gridSize)
 
         info = {"collision": 0,
                 "similarity": 0}
@@ -77,8 +77,8 @@ class GoalFinder(gym.GoalEnv):
                             n_bps_points=self.num_bps, custom_basis=self.basis_pts)
         info["similarity"] = similarity
 
-        for i in (np.arange(self.num_obstacles))*2:
-            if np.linalg.norm(self.agent_state - self.obstacles[i:i+2]) <= 2 * self.object_size:
+        for i in (np.arange(self.num_obstacles)) * 2:
+            if self.check_collision(self.agent_state, self.obstacles[i:i + 2], sampling=False):
                 info["collision"] = 1
 
         obs = self.get_obs()
@@ -135,11 +135,14 @@ class GoalFinder(gym.GoalEnv):
         if sampling:
             return np.linalg.norm(arr1 - arr2) >= 4 * self.object_size
         else:
-            return np.linalg.norm(arr1 - arr2) >= 2 * self.object_size
-
+            return np.linalg.norm(arr1 - arr2) <= 2 * self.object_size
 
 timesteps = 500000
-env = GoalFinder(gridSize=11, num_obstacles=10, timesteps=timesteps, num_bps=25)
+gridSize = 10
+num_obstacles = 10
+num_bps = 25
+
+env = GoalFinder(gridSize=gridSize, num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
 
 #check_env(env, warn=True)
 
@@ -147,13 +150,13 @@ obs = env.reset()
 model = PPO('MultiInputPolicy', env, verbose=0).learn(timesteps)
 frames = []
 n_steps = 30
-n_runs = 5 + 5
+n_runs = 100
 n_success = 0
 n_collision = 0
 for run in range(n_runs):
     obs = env.reset()
     for step in range(n_steps):
-        if step < 6:
+        if step < 0:
             action, _ = model.predict(obs, deterministic=False)
         else:
             action, _ = model.predict(obs, deterministic=True)
@@ -170,6 +173,9 @@ for run in range(n_runs):
         else:
             print("COLLIDED")
             n_collision += 1
+            env.reset()
+            break
+            #break
         print("##################################################################")
         print("\n\n")
         env.render(mode='human')
