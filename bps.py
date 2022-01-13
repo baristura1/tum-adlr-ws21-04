@@ -32,7 +32,7 @@ def normalize(x, return_scalers=False):
 def generate_random_basis(n_points=1000, n_dims=3, random_seed=13):
 
     np.random.seed(random_seed)
-    x = np.random.uniform(low=0.0, high=1, size=[n_points, n_dims])
+    x = np.random.uniform(low=-1.0, high=1.0, size=[n_points, n_dims])
     np.random.seed(None)
 
     return x

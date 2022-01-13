@@ -17,14 +17,14 @@ class GoalFinder(gym.GoalEnv):
         self.num_obstacles = num_obstacles
         self.num_bps = num_bps
 
-        self.action_space = spaces.Box(low=np.array([-0.05, -0.05]), high=np.array([0.05, 0.05
+        self.action_space = spaces.Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0
                                                                                   ]), dtype=np.float32)
 
-        self.observation_space = spaces.Dict({"observation": spaces.Box(low=0.0, high=1,
+        self.observation_space = spaces.Dict({"observation": spaces.Box(low=-1.0, high=1.0,
                                                                         shape=(self.num_bps,), dtype=np.float32),
-                                              "achieved_goal": spaces.Box(low=0.0, high=1,
+                                              "achieved_goal": spaces.Box(low=-1.0, high=1.0,
                                                                         shape=(2,), dtype=np.float32),
-                                              "desired_goal": spaces.Box(low=np.array([0.0, 0.0]),
+                                              "desired_goal": spaces.Box(low=np.array([-1.0, -1.0]),
                                                                          high=np.array([1, 1]))
                                               })
         self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2)
@@ -34,7 +34,7 @@ class GoalFinder(gym.GoalEnv):
         self.obstacles = None
         self.start_state = None
         self.timesteps = timesteps
-        self.object_size = 0.02
+        self.object_size = 0.04
         self.current_step = 0
         self.fourcc = cv2.VideoWriter_fourcc(*'DIVX')
         self.out = cv2.VideoWriter('output1m.avi', self.fourcc, 10.0, (400, 400))
@@ -48,7 +48,7 @@ class GoalFinder(gym.GoalEnv):
         basis = self.basis_pts
         self.current_step += 1
         self.agent_state = self.observation_space["achieved_goal"].sample()
-        self.obstacles = np.random.rand(self.num_obstacles*2,)
+        self.obstacles = (np.random.rand(self.num_obstacles*2,) - 0.5) * 2
         self.goal = self.observation_space["desired_goal"].sample()
         collisions = [self.check_collision(self.obstacles[i:i+2], self.goal) for i in (np.arange(self.num_obstacles))*2]
 
@@ -65,9 +65,9 @@ class GoalFinder(gym.GoalEnv):
         return ob
 
     def step(self, action):
-        self.agent_state[0] += action[0]
-        self.agent_state[1] += action[1]
-        self.agent_state = np.clip(self.agent_state, 0, 1)
+        self.agent_state[0] += action[0] * 2 * self.object_size
+        self.agent_state[1] += action[1] * 2 * self.object_size
+        self.agent_state = np.clip(self.agent_state, -1, 1)
 
         info = {"collision": 0,
                 "similarity": 0}
@@ -81,7 +81,7 @@ class GoalFinder(gym.GoalEnv):
 
         obs = self.get_obs()
         reward = self.compute_reward(obs["achieved_goal"], obs["desired_goal"], info)
-        done = True if (np.linalg.norm(obs["achieved_goal"] - obs["desired_goal"]) <= 0.06) else False
+        done = True if (np.linalg.norm(obs["achieved_goal"] - obs["desired_goal"]) <= 2 * self.object_size) else False
         #print(reward)
         return obs, reward, done, info
 
@@ -89,10 +89,10 @@ class GoalFinder(gym.GoalEnv):
 
         if info["collision"] == 1:
             return float(-100)
-        elif np.linalg.norm(observation - desired_goal) <= 0.05:
+        elif np.linalg.norm(observation - desired_goal) <= 2 * self.object_size:
             return float(1000)
         else:
-            return float(-np.linalg.norm(observation - desired_goal)) * 10
+            return float(-np.linalg.norm(observation - desired_goal)) * 50
 
         #return self.punishment * np.linalg.norm(np.transpose(info["similarity"]) - np.expand_dims(self.obs_state, axis=-1), ord=np.inf) + \
          #      int(np.linalg.norm(observation - desired_goal) <= 0.6) * self.payout
@@ -100,24 +100,24 @@ class GoalFinder(gym.GoalEnv):
     def render(self, mode="human"):
         image = np.ones((400, 400, 3), dtype=np.uint8) * 255
         image = cv2.circle(img=image,
-                           center=(int(self.agent_state[0] * 400), int(self.agent_state[1] * 400)),
+                           center=(int((self.agent_state[0] + 1) * 200), int((self.agent_state[1] +1) * 200)),
                            radius=8,
                            color=(255, 0, 0),
                            thickness=-1)
         image = cv2.circle(img=image,
-                           center=(int(self.goal[0] * 400), int(self.goal[1] * 400)),
+                           center=(int((self.goal[0] +1) * 200), int((self.goal[1] +1) * 200)),
                            radius=8,
                            color=(0, 0, 255),
                            thickness=-1)
         for i in (np.arange(self.num_obstacles))*2:
             image = cv2.circle(img=image,
-                               center=(int(self.obstacles[i] * 400), int(self.obstacles[i+1] * 400)),
+                               center=(int((self.obstacles[i] + 1) * 200), int((self.obstacles[i+1] + 1) * 200)),
                                radius=8,
                                color=(0, 255, 0),
                                thickness=-1)
         for i in range(self.num_bps):
             image = cv2.circle(img=image,
-                               center=(int(self.basis_pts[i][0] * 400), int(self.basis_pts[i][1] * 400)),
+                               center=(int((self.basis_pts[i][0] + 1) * 200), int((self.basis_pts[i][1] + 1) * 200)),
                                radius=1,
                                color=(0, 0, 0),
                                thickness=-1)
@@ -142,7 +142,7 @@ class GoalFinder(gym.GoalEnv):
         else:
             return np.linalg.norm(arr1 - arr2) <= 2 * self.object_size
 
-timesteps = 5000000
+timesteps = 100000
 num_obstacles = 10
 num_bps = 15
 
@@ -227,3 +227,905 @@ else:
     return float(-np.linalg.norm(observation - desired_goal)) * 10
 
 """
+
+timesteps = 200000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 300000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+timesteps = 400000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 500000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 600000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 700000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+
+timesteps = 800000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 900000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+
+timesteps = 1000000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+timesteps = 1500000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+
+timesteps = 2000000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
+
+
+
+timesteps = 2500000
+num_obstacles = 10
+num_bps = 15
+
+env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
+
+#check_env(env, warn=True)
+
+obs = env.reset()
+model = PPO('MultiInputPolicy', env, verbose=1).learn(timesteps)
+frames = []
+n_steps = 30
+n_runs = 100
+n_success = 0
+n_collision = 0
+for run in range(n_runs):
+    obs = env.reset()
+    for step in range(n_steps):
+        if step < 0:
+            action, _ = model.predict(obs, deterministic=False)
+        else:
+            action, _ = model.predict(obs, deterministic=True)
+        print("###########################STEP {}################################".format(step + 1))
+        print("Action: ", action)
+        print("******************************************************************")
+        obs, reward, done, info = env.step(action)
+        print('obs=', obs["observation"][0:2], 'reward=', reward, 'done=', done)
+        print("******************************************************************")
+        print("Obstacle positions: ", obs["observation"][2:4], obs["observation"][4:6], obs["observation"][6:8])
+        print("******************************************************************")
+        if info["collision"] == 0:
+            print("No collision")
+        else:
+            print("COLLIDED")
+            n_collision += 1
+            env.reset()
+            break
+            #break
+        print("##################################################################")
+        print("\n\n")
+        env.render(mode='human')
+        time.sleep(0.1)
+        if done:
+            if run == n_runs - 1:
+                env.reset()
+            print("Goal reached!", "reward=", reward)
+            n_success += 1
+            break
+
+env.out.release()
+
+rundate = datetime.now()
+rundatestr = rundate.strftime("%d/%m/%Y %H:%M:%S")
+
+print("\n\n########################## END RESULT ###############################")
+print(f"While learning, {env.current_step} out of {timesteps} episodes ended in success.")
+print(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.")
+print("--------------------------Used variables:-------------------------")
+print(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}")
+print(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))")
+print(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))")
+print("#####################################################################\n\n")
+
+with open('logs_marc.txt', 'a') as logs:
+    logs.write("\n\n########################## END RESULT ###############################\n")
+    logs.write(rundatestr)
+    logs.write(f"\nWhile learning, {env.current_step} out of {timesteps} episodes ended in success.\n")
+    logs.write(f"During evaluation, in {n_success} of {n_runs} runs the agent managed to reach the goal while colliding {n_collision} times.\n")
+    logs.write("--------------------------Used variables:-------------------------\n")
+    logs.write(f"Grid size: 1, Object size: {env.object_size}, Num of obstacles: {env.num_obstacles}, BPS Size: {env.num_bps}\n")
+    logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
+    logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
+    logs.write("#####################################################################\n\n")
