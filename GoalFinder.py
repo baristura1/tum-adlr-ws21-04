@@ -71,7 +71,7 @@ class GoalFinder(gym.GoalEnv):
                           #for i in (np.arange(self.num_obstacles))*2]
 
         self.obs_state, idx = encode(np.expand_dims(self.obstacles.reshape((self.num_obstacles, 2)), axis=0),
-                                n_bps_points=self.num_bps, custom_basis=basis)
+                                     n_bps_points=self.num_bps, custom_basis=basis)
         self.obs_state = np.squeeze(np.transpose(self.obs_state), axis=-1)
         """
         ======= For varying obj sizes========
@@ -138,7 +138,7 @@ class GoalFinder(gym.GoalEnv):
         for i in (np.arange(self.num_obstacles))*2:
             image = cv2.circle(img=image,
                                center=(int((self.obstacles[i] + 1) * 200), int((self.obstacles[i+1] + 1) * 200)),
-                               radius=int(self.obs_sizes[int(i/2)] * 200),
+                               radius=int(self.object_size * 200), # int(self.obs_sizes[int(i/2)] * 200),
                                color=(0, 255, 0),
                                thickness=-1)
         for i in range(self.num_bps):

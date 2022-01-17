@@ -574,3 +574,15 @@ Negative reward coefficient: -0.2 (Multiplied with L-inf norm of BPS(agent_pos) 
 Positive reward: 100 (Multiplied with I(goal_reached))
 #####################################################################
 
+
+
+########################## OBJ SIZE ###############################
+17/01/2022 19:53:26
+While learning, 549417 out of 500000 episodes ended in success.
+During evaluation, in 946 of 1000 runs the agent managed to reach the goal while colliding 53 times.
+--------------------------Used variables:-------------------------
+Grid size: 1, Object size: 0.04, Num of obstacles: 20, BPS Size: 60
+Negative reward coefficient: -0.2 (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))
+Positive reward: 100 (Multiplied with I(goal_reached))
+#####################################################################
+
