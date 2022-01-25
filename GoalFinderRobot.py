@@ -55,13 +55,13 @@ class GoalFinder(gym.GoalEnv):
         self.robot_nodes = np.zeros((11,2))
         self.angles = np.zeros((3,))
         self.agent_state = self.create_robot()
-        self.obstacles = (np.random.rand(self.num_obstacles*2,) - 0.5) * 2
+        self.obstacles = generate_random_basis(n_points=self.num_obstacles, n_dims=2).flatten()
         """
         self.obs_sizes = np.random.randint(1, 5, (self.num_obstacles,)) / 100
         """
         #self.obs_sizes[-1] = 0.2
-        self.goal = self.observation_space["desired_goal"].sample()
-        self.goal = np.clip(self.goal, -0.48, 0.48)
+        self.goal = self.sample_goal()
+
         collisions = [self.check_collision(self.obstacles[i:i + 2], self.goal) \
                       for i in (np.arange(self.num_obstacles)) * 2]
         """
@@ -70,7 +70,8 @@ class GoalFinder(gym.GoalEnv):
                       for i in (np.arange(self.num_obstacles))*2]
         """
         while not np.all(collisions):
-            self.goal = self.observation_space["desired_goal"].sample()
+            self.goal = self.sample_goal()
+
             collisions = [self.check_collision(self.obstacles[i:i + 2], self.goal) \
                           for i in (np.arange(self.num_obstacles)) * 2]
             #collisions = [self.check_collision(self.obstacles[i:i+2], self.goal, margin=self.obs_sizes[int(i/2)]) \
@@ -189,6 +190,11 @@ class GoalFinder(gym.GoalEnv):
 
     def render(self, mode="human"):
         image = np.ones((400, 400, 3), dtype=np.uint8) * 255
+        image = cv2.circle(img=image,
+                           center=(200, 200),
+                           radius=200,  # scaled twice
+                           color=(0, 0, 0),
+                           thickness=1)
         for node in self.robot_nodes:
             image = cv2.circle(img=image,
                            center=(int((node[0] + 1) * 200), int((node[1] + 1) * 200)),
@@ -235,6 +241,16 @@ class GoalFinder(gym.GoalEnv):
             return np.linalg.norm(arr1 - arr2) >= 4 * (self.object_size)
         else:
             return np.linalg.norm(arr1 - arr2) <= 2 * (self.object_size)
+
+    def sample_goal(self):
+        goal = self.observation_space["desired_goal"].sample()
+
+        radius = 0.5 * (goal[0] + 1)
+        angle = (goal[1] + 1) * np.pi
+        goal[0] = np.cos(angle) * radius
+        goal[1] = np.sin(angle) * radius
+
+        return goal
     """
     =========For varying obj sizes===========
     def check_collision(self, arr1, arr2, margin, sampling=True):
@@ -244,9 +260,9 @@ class GoalFinder(gym.GoalEnv):
             return np.linalg.norm(arr1 - arr2) <= (margin + self.agent_size)
     """
 
-timesteps = 250000
-num_obstacles = 1
-num_bps = 5
+timesteps = 1000
+num_obstacles = 40
+num_bps = 200
 
 env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
 
@@ -254,11 +270,11 @@ env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_b
 
 obs = env.reset()
 
-model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log='./logs/').learn(timesteps)
+model = PPO("MultiInputPolicy", env, verbose=1).learn(timesteps)
 
 frames = []
-n_steps = 40
-n_runs = 50
+n_steps = 5
+n_runs = 100
 n_success = 0
 n_collision = 0
 for run in range(n_runs):
