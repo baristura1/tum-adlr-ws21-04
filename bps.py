@@ -29,10 +29,43 @@ def normalize(x, return_scalers=False):
         return x_norm
 
 
-def generate_random_basis(n_points=1000, n_dims=3, random_seed=13):
+def generate_random_basis_square(n_points=1000, n_dims=2, random_seed=13):
 
     np.random.seed(random_seed)
     x = np.random.uniform(low=-1.0, high=1.0, size=[n_points, n_dims])
+    np.random.seed(None)
+
+    return x
+
+def generate_random_basis(n_points=1000, n_dims=2, radius=1.0, random_seed=13):
+    """Sample uniformly from d-dimensional unit ball
+    The code is inspired by this small note:
+    https://blogs.sas.com/content/iml/2016/04/06/generate-points-uniformly-in-ball.html
+    Parameters
+    ----------
+    n_points : int
+        number of samples
+    n_dims : int
+        number of dimensions
+    radius: float
+        ball radius
+    random_seed: int
+        random seed for basis point selection
+    Returns
+    -------
+    x : numpy array
+        points sampled from d-ball
+    """
+    np.random.seed(random_seed)
+    # sample point from d-sphere
+    x = np.random.normal(size=[n_points, n_dims])
+    x_norms = np.sqrt(np.sum(np.square(x), axis=1)).reshape([-1, 1])
+    x_unit = x / x_norms
+
+    # now sample radiuses uniformly
+    r = np.random.uniform(size=[n_points, 1])
+    u = np.power(r, 1.0 / n_dims)
+    x = radius * x_unit * u
     np.random.seed(None)
 
     return x
@@ -56,5 +89,4 @@ def encode(x, n_bps_points=512, radius=1.5, random_seed=13, custom_basis=None):
         fid_dist, npts_ix = nbrs.kneighbors(basis_set)
         x_bps[fid] = fid_dist.squeeze()
 
-    return x_bps, npts_ix
-
+        return x_bps, npts_ix
