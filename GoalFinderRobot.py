@@ -18,9 +18,11 @@ class GoalFinder(gym.GoalEnv):
         super(GoalFinder, self).__init__()
         self.num_obstacles = num_obstacles
         self.num_bps = num_bps
+        self.dof = 3
+        action_space = np.ones(self.dof) * 3
 
         #self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), dtype=np.float32)
-        self.action_space = spaces.MultiDiscrete([3,3,3])
+        self.action_space = spaces.MultiDiscrete(action_space)
         self.observation_space = spaces.Dict({"observation": spaces.Box(low=-1.0, high=1.0,
                                                                         shape=(self.num_bps,), dtype=np.float32),
                                               "achieved_goal": spaces.Box(low=-1.0, high=1.0,
@@ -30,8 +32,8 @@ class GoalFinder(gym.GoalEnv):
                                               })
         self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2)
         self.agent_size = 0.02
-        self.link_len = 0.33 / 2
-        self.robot_nodes = np.zeros((10,2))
+        self.link_len = 1 / self.dof
+        self.robot_nodes = np.zeros((3 * self.dof + 1,2))
         self.agent_state = None
         self.angles = None
         self.obs_state = None
@@ -53,8 +55,8 @@ class GoalFinder(gym.GoalEnv):
         #super().reset()
         basis = self.basis_pts
         self.current_step += 1
-        self.robot_nodes = np.zeros((10,2))
-        self.angles = np.zeros(3)
+        self.robot_nodes = np.zeros((3 * self.dof + 1,2))
+        self.angles = np.zeros(self.dof)
         self.agent_state = self.create_robot()
         self.obstacles = (np.random.rand(self.num_obstacles*2,) - 0.5) * 2
         """
@@ -62,7 +64,7 @@ class GoalFinder(gym.GoalEnv):
         """
         #self.obs_sizes[-1] = 0.2
         self.goal = self.sample_goal()
-        self.goal = np.clip(self.goal, -self.link_len*3, self.link_len*3)
+        #self.goal = np.clip(self.goal, -self.link_len*3, self.link_len*3)
         collisions = [self.check_collision(self.obstacles[i:i + 2], self.goal) \
                       for i in (np.arange(self.num_obstacles)) * 2]
         """
@@ -92,11 +94,16 @@ class GoalFinder(gym.GoalEnv):
         return ob
 
     def step(self, action):
+        action -= 1 #setting actions to -1, 0 or 1
+        for i in range(len(action)):
+            if action[i] == 0:
+                self.angles[i] += 0
+            elif action[i] == 1:
+                self.angles[i] += math.pi / 180 * action[i]
+            else:
+                self.angles[i] -= math.pi / 180 * action[i]
 
-        self.angles[0] += math.pi / 180 * action[0] if action[0] != 0 else 0
-        self.angles[1] += math.pi / 180 * action[1] if action[1] != 0 else 0
-        self.angles[2] += math.pi / 180 * action[2] if action[2] != 0 else 0
-
+        action += 1 #setting it back so sb3 does not throw error
         ee_pos = self.robot_update(self.angles)
 
         self.agent_state[0] = ee_pos[0]
@@ -111,7 +118,7 @@ class GoalFinder(gym.GoalEnv):
 
         for i in (np.arange(self.num_obstacles)) * 2:
             if np.any([self.check_collision(self.robot_nodes[j], self.obstacles[i:i+2], sampling=False) \
-                         for j in range(10)]):
+                         for j in range(3 * self.dof)]):
                 info["collision"] = 1
 
             """
@@ -129,23 +136,17 @@ class GoalFinder(gym.GoalEnv):
         return obs, reward, done, info
 
     def create_robot(self):
-        joint1 = np.array([0,0])
-        self.robot_nodes[0] = joint1
-        joint2 = joint1 + [self.link_len,0]
-        self.robot_nodes[1] = joint2
-        joint3 = joint2 + [self.link_len,0]
-        self.robot_nodes[2] = joint3
+        self.robot_nodes[0] = np.array([0,0])
+        self.robot_nodes[1] = self.robot_nodes[0] + [self.link_len / 3, 0]
+        self.robot_nodes[2] = self.robot_nodes[1] + [self.link_len / 3, 0]
 
-        self.robot_nodes[3] = self.robot_nodes[0] + [self.link_len/3, 0]
-        self.robot_nodes[4] = self.robot_nodes[3] + [self.link_len/3, 0]
+        for i in range(3, 3 * self.dof, 3):
+            self.robot_nodes[i] = self.robot_nodes[i - 3] + [self.link_len,0]
+            self.robot_nodes[i + 1] = self.robot_nodes[i] + [self.link_len/3, 0]
+            self.robot_nodes[i + 2] = self.robot_nodes[i + 1] + [self.link_len/3, 0]
 
-        self.robot_nodes[5] = self.robot_nodes[1] + [self.link_len/3, 0]
-        self.robot_nodes[6] = self.robot_nodes[5] + [self.link_len/3, 0]
-
-        self.robot_nodes[7] = self.robot_nodes[2] + [self.link_len/3, 0]
-        self.robot_nodes[8] = self.robot_nodes[7] + [self.link_len/3, 0]
-
-        self.robot_nodes[9] = self.robot_nodes[8] + [self.link_len/3, 0]
+        self.robot_nodes[-1] = self.robot_nodes[-2] + [self.link_len/3, 0]
+        print(self.robot_nodes)
 
         return np.array(self.robot_nodes[-1])
 
@@ -173,18 +174,16 @@ class GoalFinder(gym.GoalEnv):
                        [0, 0, 0, 1])
         """
 
-        self.robot_nodes[1] = [self.link_len * np.cos(angles[0]), self.link_len * np.sin(angles[0])]
-        self.robot_nodes[2] = self.robot_nodes[1] + [self.link_len * np.cos(angles[1]), self.link_len * np.sin(angles[1])]
+        sum_angles = angles[0]
+        for i in range(1, 3 * self.dof):
+            self.robot_nodes[i] = self.robot_nodes[i - 1] + [self.link_len / 3 * np.cos(sum_angles),
+                                                             self.link_len / 3 * np.sin(sum_angles)]
+            if (i % 3 == 0):
+                idx = int(i / 3)
+                sum_angles += angles[idx]
 
-        self.robot_nodes[3] = self.robot_nodes[0] + [self.link_len/3 * np.cos(angles[0]), self.link_len/3 * np.sin(angles[0])]
-        self.robot_nodes[4] = self.robot_nodes[3] + [self.link_len/3 * np.cos(angles[0]), self.link_len/3 * np.sin(angles[0])]
-
-        self.robot_nodes[5] = self.robot_nodes[1] + [self.link_len/3 * np.cos(angles[1]), self.link_len/3 * np.sin(angles[1])]
-        self.robot_nodes[6] = self.robot_nodes[5] + [self.link_len/3 * np.cos(angles[1]), self.link_len/3 * np.sin(angles[1])]
-
-        self.robot_nodes[7] = self.robot_nodes[2] + [self.link_len/3 * np.cos(angles[2]), self.link_len/3 * np.sin(angles[2])]
-        self.robot_nodes[8] = self.robot_nodes[7] + [self.link_len/3 * np.cos(angles[2]), self.link_len/3 * np.sin(angles[2])]
-        self.robot_nodes[9] = self.robot_nodes[8] + [self.link_len / 3 * np.cos(angles[2]), self.link_len / 3 * np.sin(angles[2])]
+        self.robot_nodes[-1] = self.robot_nodes[-2] + [self.link_len / 3 * np.cos(sum_angles),
+                                                       self.link_len / 3 * np.sin(sum_angles)]
 
         return self.robot_nodes[-1]
 
@@ -198,32 +197,33 @@ class GoalFinder(gym.GoalEnv):
             return float(0) #float(-np.linalg.norm(observation - desired_goal)) * 50
 
     def render(self, mode="human"):
-        image = np.ones((400, 400, 3), dtype=np.uint8) * 255
-        image = cv2.circle(img=image,
+        image = np.ones((400, 400, 3), dtype=np.uint8) * 255    #white square
+        image = cv2.circle(img=image,                           #workspace (unit circle)
                            center=(200, 200),
                            radius=200,  # scaled twice
                            color=(0, 0, 0),
                            thickness=1)
-        for idx, node in enumerate(self.robot_nodes):
+
+        for idx, node in enumerate(self.robot_nodes):           #robot nodes
             image = cv2.circle(img=image,
                            center=(int((node[0] + 1) * 200), int((node[1] + 1) * 200)),
                            radius=int(self.agent_size * 400), #scaled twice
-                           color=(255, 0, 255) if idx < 3 else (255, 0, 0),
+                           color=(255, 0, 0) if idx % 3 else (255, 0, 255),     #blue for links, pink for joints and EoA
                            thickness=-1)
 
-        image = cv2.circle(img=image,
+        image = cv2.circle(img=image,                           #goal
                            center=(int((self.goal[0] +1) * 200), int((self.goal[1] +1) * 200)),
                            radius=int(self.agent_size * 400), #scaled twice
                            color=(0, 0, 255),
                            thickness=-1)
-        for i in (np.arange(self.num_obstacles))*2:
+        for i in (np.arange(self.num_obstacles))*2:             #obstacles
             image = cv2.circle(img=image,
                                center=(int((self.obstacles[i] + 1) * 200), int((self.obstacles[i+1] + 1) * 200)),
                                radius=int(self.object_size * 200), # int(self.obs_sizes[int(i/2)] * 200),
                                color=(0, 255, 0),
                                thickness=-1)
         for i in range(self.num_bps):
-            image = cv2.circle(img=image,
+            image = cv2.circle(img=image,                       #basis points
                                center=(int((self.basis_pts[i][0] + 1) * 200), int((self.basis_pts[i][1] + 1) * 200)),
                                radius=1,
                                color=(0, 0, 0),
@@ -252,13 +252,9 @@ class GoalFinder(gym.GoalEnv):
             return np.linalg.norm(arr1 - arr2) <= 2 * (self.object_size)
 
     def sample_goal(self):
-        goal = self.observation_space["desired_goal"].sample()
-
-        radius = 0.5 * (goal[0] + 1)
-        angle = (goal[1] + 1) * np.pi
-        goal[0] = np.cos(angle) * radius
-        goal[1] = np.sin(angle) * radius
-
+        goal = [2, 2]
+        while(np.linalg.norm(goal) >= 1):
+            goal = self.observation_space["desired_goal"].sample()
         return goal
     """
     =========For varying obj sizes===========
@@ -270,9 +266,9 @@ class GoalFinder(gym.GoalEnv):
     """
 
 
-timesteps = 150000
-num_obstacles = 2
-num_bps = 10
+timesteps = 100
+num_obstacles = 1
+num_bps = 1
 
 env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
 
@@ -284,7 +280,7 @@ model = PPO("MultiInputPolicy", env, verbose=1).learn(timesteps)
 
 frames = []
 n_steps = 50
-n_runs = 50
+n_runs = 100
 n_success = 0
 n_collision = 0
 for run in range(n_runs):
