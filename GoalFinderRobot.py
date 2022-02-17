@@ -18,7 +18,7 @@ class GoalFinder(gym.GoalEnv):
         super(GoalFinder, self).__init__()
         self.num_obstacles = num_obstacles
         self.num_bps = num_bps
-        self.dof = 2
+        self.dof = 3
         action_space = np.ones(self.dof) * 2 #two actions (+/- 1 degree) for multidiscrete action space depending on dof
 
 
@@ -60,14 +60,15 @@ class GoalFinder(gym.GoalEnv):
         self.angles = np.zeros(self.dof)
         self.agent_state = self.create_robot()
         #self.obstacles = (np.random.rand(self.num_obstacles*2,) - 0.5) * 2
-        self.obstacles = np.ones(2*self.num_obstacles)
+        self.obstacles = generate_random_basis(n_points=self.num_obstacles, n_dims=2, random_seed=None).flatten()
+        #self.obstacles = np.ones(self.num_obstacles * 2)
         """
         self.obs_sizes = np.random.randint(1, 5, (self.num_obstacles,)) / 100
         """
         #self.obs_sizes[-1] = 0.2
         self.goal, self.goal_cartesian = self.sample_goal()
         #self.goal = np.clip(self.goal, -self.link_len*3, self.link_len*3)
-        collisions = [self.check_collision(self.obstacles[i:i + 2], self.goal) \
+        collisions = [self.check_collision(self.obstacles[i:i + 2], self.goal_cartesian) \
                       for i in (np.arange(self.num_obstacles)) * 2]
         """
         =======For varying obj sizes=====
@@ -148,7 +149,6 @@ class GoalFinder(gym.GoalEnv):
             self.robot_nodes[i + 2] = self.robot_nodes[i + 1] + [self.link_len/3, 0]
 
         self.robot_nodes[-1] = self.robot_nodes[-2] + [self.link_len/3, 0]
-        print(self.robot_nodes)
 
         return np.array(self.robot_nodes[-1])
 
@@ -193,7 +193,7 @@ class GoalFinder(gym.GoalEnv):
         elif np.linalg.norm(self.goal_cartesian - self.robot_nodes[-1]) <= 4 * self.object_size:
             return float(1000)
         else:
-            return float(-np.linalg.norm(desired_goal - achieved_goal))
+            return float(-np.linalg.norm(desired_goal - achieved_goal) * 50)
 
     def render(self, mode="human"):
         image = np.ones((400, 400, 3), dtype=np.uint8) * 255    #white square
@@ -251,8 +251,8 @@ class GoalFinder(gym.GoalEnv):
             return np.linalg.norm(arr1 - arr2) <= 2 * (self.object_size)
 
     def sample_goal(self):
-        #goal = self.observation_space["desired_goal"].sample()
-        goal = [-1.5, 2.3]
+        goal = self.observation_space["desired_goal"].sample()
+        #goal = [-1.5, 2.3]
         sum_angles = 0
         goal_cartesian = np.zeros(2)
         for i in range(self.dof):
@@ -262,39 +262,39 @@ class GoalFinder(gym.GoalEnv):
 
         return goal, goal_cartesian
 
-    def task_to_joint_coordinates(self, dof, pos):
-        if dof == 2:
-            return self.inputCalc(pos)
-
-    def calcAngle(self, reqcos):
-        res1 = math.atan2(math.sqrt(1 - math.pow(reqcos, 2)), reqcos)
-        res2 = math.atan2(math.sqrt(1 - math.pow(reqcos, 2)) * (-1), reqcos)
-        return (res1, res2)
-
-    def inputCalc(self, pos):
-        px = pos[0]
-        py = pos[1]
-        l1 = self.link_len
-        l2 = self.link_len
-        ctheta2 = (px ** 2 + py ** 2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2)
-        stheta2 = math.sqrt(1 - math.pow(ctheta2, 2))
-        ctheta1 = (px * (l1 + l2 * ctheta2) + py * l2 * stheta2) / (px ** 2 + py ** 2)
-        theta1a, theta1b = self.calcAngle(ctheta1)
-        theta2a, theta2b = self.calcAngle(ctheta2)
-        print("theta1: {} and {}".format(math.degrees(theta1a), math.degrees(theta1b)))
-        print("theta2: {} and {}".format(math.degrees(theta2a), math.degrees(theta2b)))
-
-        solution1 = np.linalg.norm(np.sin([theta1a, theta2a]) - np.sin(self.angles))
-        solution2 = np.linalg.norm(np.sin([theta1b, theta2a]) - np.sin(self.angles))
-        solution3 = np.linalg.norm(np.sin([theta1a, theta2b]) - np.sin(self.angles))
-        solution4 = np.linalg.norm(np.sin([theta1b, theta2b]) - np.sin(self.angles))
-
-        num_sol = np.argmin([solution1, solution2, solution3, solution4])
-
-        solution = [theta1a, theta2a], [theta1b, theta2a], [theta1a, theta2b], [theta1b, theta2b]
-
-        #return solution[num_sol]
-        return np.array([theta1a, theta2a])
+    # def task_to_joint_coordinates(self, dof, pos):
+    #     if dof == 2:
+    #         return self.inputCalc(pos)
+    #
+    # def calcAngle(self, reqcos):
+    #     res1 = math.atan2(math.sqrt(1 - math.pow(reqcos, 2)), reqcos)
+    #     res2 = math.atan2(math.sqrt(1 - math.pow(reqcos, 2)) * (-1), reqcos)
+    #     return (res1, res2)
+    #
+    # def inputCalc(self, pos):
+    #     px = pos[0]
+    #     py = pos[1]
+    #     l1 = self.link_len
+    #     l2 = self.link_len
+    #     ctheta2 = (px ** 2 + py ** 2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2)
+    #     stheta2 = math.sqrt(1 - math.pow(ctheta2, 2))
+    #     ctheta1 = (px * (l1 + l2 * ctheta2) + py * l2 * stheta2) / (px ** 2 + py ** 2)
+    #     theta1a, theta1b = self.calcAngle(ctheta1)
+    #     theta2a, theta2b = self.calcAngle(ctheta2)
+    #     print("theta1: {} and {}".format(math.degrees(theta1a), math.degrees(theta1b)))
+    #     print("theta2: {} and {}".format(math.degrees(theta2a), math.degrees(theta2b)))
+    #
+    #     solution1 = np.linalg.norm(np.sin([theta1a, theta2a]) - np.sin(self.angles))
+    #     solution2 = np.linalg.norm(np.sin([theta1b, theta2a]) - np.sin(self.angles))
+    #     solution3 = np.linalg.norm(np.sin([theta1a, theta2b]) - np.sin(self.angles))
+    #     solution4 = np.linalg.norm(np.sin([theta1b, theta2b]) - np.sin(self.angles))
+    #
+    #     num_sol = np.argmin([solution1, solution2, solution3, solution4])
+    #
+    #     solution = [theta1a, theta2a], [theta1b, theta2a], [theta1a, theta2b], [theta1b, theta2b]
+    #
+    #     #return solution[num_sol]
+    #     return np.array([theta1a, theta2a])
 
     """
     =========For varying obj sizes===========
@@ -306,9 +306,9 @@ class GoalFinder(gym.GoalEnv):
     """
 
 
-timesteps = 50000
+timesteps = 10000
 num_obstacles = 1
-num_bps = 1
+num_bps = 3
 
 env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
 
@@ -320,7 +320,7 @@ model = PPO("MultiInputPolicy", env, verbose=1).learn(timesteps)
 
 frames = []
 n_steps = 360
-n_runs = 10
+n_runs = 100
 n_success = 0
 n_collision = 0
 for run in range(n_runs):
