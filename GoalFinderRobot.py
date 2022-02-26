@@ -18,20 +18,34 @@ class GoalFinder(gym.GoalEnv):
         super(GoalFinder, self).__init__()
         self.num_obstacles = num_obstacles
         self.num_bps = num_bps
-        self.dof = 3
+        self.dof = 2
         action_space = np.ones(self.dof) * 2 #two actions (+/- 1 degree) for multidiscrete action space depending on dof
 
 
         #self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), dtype=np.float32)
         self.action_space = spaces.MultiDiscrete(action_space)
-        self.observation_space = spaces.Dict({"observation": spaces.Box(low=-1.0, high=1.0,
-                                                                        shape=(self.num_bps,), dtype=np.float32),
-                                              "achieved_goal": spaces.Box(low=0, high=2 * math.pi,
-                                                                        shape=(self.dof,), dtype=np.float32),
-                                              "desired_goal": spaces.Box(low=np.array(np.ones(self.dof) * -math.pi),
-                                                                         high=np.array(np.ones(self.dof) * math.pi))
-                                              })
-        self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2)
+        self.use_bps = False
+
+        if self.use_bps == True:
+            self.observation_space = spaces.Dict({"observation": spaces.Box(low=-1.0, high=1.0,
+                                                                            shape=(self.num_bps,), dtype=np.float32),
+                                                  "achieved_goal": spaces.Box(low=0, high=2 * math.pi,
+                                                                            shape=(self.dof,), dtype=np.float32),
+                                                  "desired_goal": spaces.Box(low=np.array(np.ones(self.dof) * -math.pi),
+                                                                             high=np.array(np.ones(self.dof) * math.pi))
+                                                  })
+            self.basis_pts = generate_random_basis(n_points=self.num_bps, n_dims=2)
+
+        else:
+            self.observation_space = spaces.Dict({"observation": spaces.Box(low=-1.0, high=1.0,
+                                                                            shape=((self.num_obstacles) * 2,),
+                                                                            dtype=np.float32),
+                                                  "achieved_goal": spaces.Box(low=0, high=2 * math.pi,
+                                                                            shape=(self.dof,), dtype=np.float32),
+                                                  "desired_goal": spaces.Box(low=np.array(np.ones(self.dof) * -math.pi),
+                                                                             high=np.array(np.ones(self.dof) * math.pi))
+                                                  })
+
         self.agent_size = 0.02
         self.link_len = 1 / self.dof
         self.robot_nodes = np.zeros((3 * self.dof + 1,2))
@@ -54,14 +68,25 @@ class GoalFinder(gym.GoalEnv):
 
     def reset(self):
         #super().reset()
-        basis = self.basis_pts
         self.current_step += 1
         self.robot_nodes = np.zeros((3 * self.dof + 1, 2))
         self.angles = np.zeros(self.dof)
         self.agent_state = self.create_robot()
         #self.obstacles = (np.random.rand(self.num_obstacles*2,) - 0.5) * 2
-        self.obstacles = generate_random_basis(n_points=self.num_obstacles, n_dims=2, random_seed=None).flatten()
+        self.obstacles = generate_random_basis(n_points=self.num_obstacles, n_dims=2, random_seed=None)
         #self.obstacles = np.ones(self.num_obstacles * 2)
+
+        # resample obstacles inside the workspace of joint 1
+        print(self.obstacles)
+        for i in range(self.num_obstacles):
+            if (np.linalg.norm(self.obstacles[i]) < (1.0 / self.dof + 2 * self.object_size)):
+                print(self.obstacles[i])
+                while (np.linalg.norm(self.obstacles[i]) < (1.0 / self.dof + 2 * self.object_size)):
+                    self.obstacles[i] = generate_random_basis(n_points=1, n_dims=2, random_seed=None)[0]
+                print(self.obstacles[i])
+
+        self.obstacles = self.obstacles.flatten()
+
         """
         self.obs_sizes = np.random.randint(1, 5, (self.num_obstacles,)) / 100
         """
@@ -83,9 +108,13 @@ class GoalFinder(gym.GoalEnv):
             #collisions = [self.check_collision(self.obstacles[i:i+2], self.goal, margin=self.obs_sizes[int(i/2)]) \
                           #for i in (np.arange(self.num_obstacles))*2]
 
-        self.obs_state, idx = encode(np.expand_dims(self.obstacles.reshape((self.num_obstacles, 2)), axis=0),
-                                     n_bps_points=self.num_bps, custom_basis=basis)
-        self.obs_state = np.squeeze(np.transpose(self.obs_state), axis=-1)
+        if self.use_bps == True:
+            self.obs_state, idx = encode(np.expand_dims(self.obstacles.reshape((self.num_obstacles, 2)), axis=0),
+                                         n_bps_points=self.num_bps, custom_basis=self.basis_pts)
+            self.obs_state = np.squeeze(np.transpose(self.obs_state), axis=-1)
+
+        else:
+            self.obs_state = self.obstacles.flatten()
         """
         ======= For varying obj sizes========
         idx = np.squeeze(idx, axis=-1)
@@ -115,9 +144,10 @@ class GoalFinder(gym.GoalEnv):
         #self.current_step += 1
         info = {"collision": 0,
                 "similarity": 0}
-        similarity = encode(np.expand_dims(self.agent_state.reshape((1, 2)), axis=0),
-                            n_bps_points=self.num_bps, custom_basis=self.basis_pts)
-        info["similarity"] = similarity
+
+        # similarity = encode(np.expand_dims(self.agent_state.reshape((1, 2)), axis=0),
+        #                     n_bps_points=self.num_bps, custom_basis=self.basis_pts)
+        # info["similarity"] = similarity
 
         for i in (np.arange(self.num_obstacles)) * 2:
             if np.any([self.check_collision(self.robot_nodes[j], self.obstacles[i:i+2], sampling=False) \
@@ -221,12 +251,13 @@ class GoalFinder(gym.GoalEnv):
                                radius=int(self.object_size * 200), # int(self.obs_sizes[int(i/2)] * 200),
                                color=(0, 255, 0),
                                thickness=-1)
-        for i in range(self.num_bps):
-            image = cv2.circle(img=image,                       #basis points
-                               center=(int((self.basis_pts[i][0] + 1) * 200), int((self.basis_pts[i][1] + 1) * 200)),
-                               radius=1,
-                               color=(0, 0, 0),
-                               thickness=-1)
+        if self.use_bps == True:
+            for i in range(self.num_bps):
+                image = cv2.circle(img=image,                       #basis points
+                                   center=(int((self.basis_pts[i][0] + 1) * 200), int((self.basis_pts[i][1] + 1) * 200)),
+                                   radius=1,
+                                   color=(0, 0, 0),
+                                   thickness=-1)
         cv2.imshow(":D", image)
         self.out.write(image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -306,8 +337,8 @@ class GoalFinder(gym.GoalEnv):
     """
 
 
-timesteps = 10000
-num_obstacles = 1
+timesteps = 5000000
+num_obstacles = 2
 num_bps = 3
 
 env = GoalFinder(num_obstacles=num_obstacles, timesteps=timesteps, num_bps=num_bps)
@@ -382,3 +413,18 @@ with open('logs.txt', 'a') as logs:
     logs.write(f"Negative reward coefficient: {env.punishment} (Multiplied with L-inf norm of BPS(agent_pos) to BPS(obstacles))\n")
     logs.write(f"Positive reward: {env.payout} (Multiplied with I(goal_reached))\n")
     logs.write("#####################################################################\n\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
