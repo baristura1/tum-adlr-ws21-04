@@ -1,6 +1,12 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
+"""
+
+Adapted from the code open sourced by the original authors of the BPS paper, https://github.com/amzn/basis-point-sets
+
+"""
+
 
 def normalize(x, return_scalers=False):
 
