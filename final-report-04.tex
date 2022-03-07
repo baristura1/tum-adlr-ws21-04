@@ -29,7 +29,7 @@ baris.tura@tum.de}}
 \maketitle
 
 \begin{abstract}
-	In this work, we show how motion planning problems for mobile and planar robots can be solved by using Reinforcement Learning. Starting with a discrete enviroment and slowly increasing the complexity by using a continuous environment, adding obstacles and constraining the robot's movements to a kinematic, we gradually developed an agent that is able to find a goal in unseen environments with various obstacles. Besides that, we showed that for planar robots, learning the kinematic is a crucial problem that should be addressed seperately before performing motion planning tasks.
+	In this work, we show how motion planning problems for mobile and planar robots can be solved by using Reinforcement Learning. Starting with a discrete environment and slowly increasing the complexity by using a continuous environment, adding obstacles and constraining the robot's movements to a kinematic, we gradually developed an agent that is able to find a goal in unseen environments with various obstacles. Besides that, we showed that for planar robots, learning the kinematic is a crucial problem that should be addressed separately before performing motion planning tasks.
 \end{abstract}
 
 \section{Introduction}
@@ -45,7 +45,7 @@ Jurgenson et al. \cite{b1} propose an algorithm based on Deep Deterministic Poli
 
 Prokudin et al. \cite{b2} present a framework that simplifies and speeds up point cloud processing. To do so, 3D point clouds are projected onto a Basis Point Set (BPS). This BPS consists of a fixed set of so-called basis points that are sampled throughout the environment. Projection of all points onto the BPS yields a distance vector, each entry of the vector representing the distance of the corresponding basis point to the closest point in the cloud, or the closest obstacle respectively. This approach eliminates the issue of varying input shapes as the BPS is predetermined and the resulting vector is always of the same length. It also helps alleviate the problem of possible permutations as each basis point has a fixed corresponding entry in the distance vector. As point clouds are often used as obstacle representation for 3D motion planning tasks, this approach can also be converted to the 2D case, offering an alternative obstacle representation.
 
-Wang et al. \cite{b3} guide an agent through a 2D environment comprising of static and dynamic obstacles using convolutional neural networks for scene understanding and an LSTM+MLP network for action selection. Here, they make use of A*-search as global guidance to enforce minimal traversal through the environment while still avoiding the dynamic obstacles. All the obstacles are unknown a priori, and are percieved within a certain field of view by the robot. For action selection, classic DDQN algorithm is used in conjunction with an LSTM network to have temporal reasoning. They name the approach Globally Guided Reinforcement Learning and obtain state-of-the-art results. 
+Wang et al. \cite{b3} guide an agent through a 2D environment comprising of static and dynamic obstacles using convolutional neural networks for scene understanding and an LSTM+MLP network for action selection. Here, they make use of A*-search as global guidance to enforce minimal traversal through the environment while still avoiding the dynamic obstacles. All the obstacles are unknown a priori and are perceived within a certain field of view by the robot. For action selection, classic DDQN algorithm is used in conjunction with an LSTM network to have temporal reasoning. They name the approach Globally Guided Reinforcement Learning and obtain state-of-the-art results. 
 
 \section{Experiments}
 
@@ -82,13 +82,13 @@ In all our experiments, we used the Stable-Baselines 3 (SB3) library and an envi
 
 We first performed motion planning for an agent in an empty 10 x 10 grid world environment with no obstacles, fixed start and goal positions and a sparse reward of 1 for finding the goal and 0 else. Using a discrete observation and action space, the experiments needed only little computation time and the agent was able to overfit to this environment quickly.
 
+In a second step, we added obstacles to the environment and initially rewarded a collision with -1. Adding the obstacles that were initially represented by their positions led to a massive increase in computation time as with the number of obstacles the dimension of the observation space was increased proportionally. Additionally, it required the introduction of weights for the positive and negative rewards, so that the agent did not overfit on either ignoring the obstacles or not trying to get to the goal at all to not get a negative reward. After increasing the number of training steps and finding suitable reward weights by using binary search, we were able to successfully train the agent in this environment.
+
 \begin{figure}[htbp]
 	\centerline{\includegraphics{discrete.png}}
 	\caption{10x10 discrete environment: The agent (A) has to find the goal (star) without colliding with the obstacles (do-not-cross signs).}
 	\label{fig3}
 \end{figure}
-
-In a second step, we added obstacles to the environment and initially rewarded a collision with -1. Adding the obstacles that were initially represented by their positions led to a massive increase in computation time as with the number of obstacles the dimension of the observation space was increased proportionally. Additionally, it required the introduction of weights for the positive and negative rewards so the agent did not overfit on either ignoring the obstacles or not trying to get to the goal at all to not get a negatice reward. After increasing the number of training steps and finding suitable reward weights by using binary search, we were able to successfully train the agent in this environment.
 
 Next, we transformed the environment to a continuous one that was normalized to [-1, 1] x [-1, 1]. To enable the agent to freely move in the continuous space, the two-dimensional action space was initially set to [-1, 1] for the agent's velocity in x- and y-direction. Later, this action space was only used to determine the direction of the agent's velocity vector in order to guarantee a fixed step size. This led to a drastic reduction of action space and required training time. 
 
@@ -96,7 +96,7 @@ As the rewards from the discrete environment proved to be too sparse in the cont
 
 Similar to the discrete environment, we then added obstacles and provided a negative reward for a collision. We were able to successfully guide the agent to the goal for up to three obstacles, observing an increase of required training time with an increasing number of obstacles again. For environments with more obstacles, the agent was not able to find the goal reliably anymore, even with the training time being one order of magnitude higher than before.
 
-This problem is caused by the varying size and permutation of the observation space: With each additional obstacle, the dimension of the observation space increases by two, adding another x- and y-position. Furthermore, possible permutations of the observation space prevents the agent from gaining a solid understanding of its environment. To cope with these problems , we adopted the idea of Basis Point Sets \cite{b2} for our two-dimensional case, which led to significantly better results. Finally, we tried to even improve them by parameter tuning. The results of these experiments are discussed in section IV.
+This problem is caused by the varying size and permutation of the observation space: With each additional obstacle, the dimension of the observation space increases by two, adding another x- and y-position. Furthermore, possible permutations of the observation space prevent the agent from gaining a solid understanding of its environment. To cope with these problems, we adopted the idea of Basis Point Sets \cite{b2} for our two-dimensional case, which led to significantly better results. Finally, we tried to even improve them by parameter tuning. The results of these experiments are discussed in section IV.
 
 \subsection{Planar Robot Arms}
 
@@ -118,13 +118,13 @@ After the robot was able to find the goal in an empty environment, more obstacle
 
 \subsection{Mobile Robot}
 
-For the mobile robot, we tried to optimize the success rate of the agent in an environment with ten randomly sampled obstacles. We first tried to find good initial parameters and always achieved a success rate of 70 to 80\%. To improve these numbers, we iteratively optimized the number of training steps and the number of basis points. As shown in Figure \ref{fig5}, neither the optimal number of training steps nor the optimal number of basis points led to an improvement. Interestingly, further increasing the number of training steps and basis points also could not improve the agent's performance. This most likely happens because of overfitting or exploding and vanishing gradients in the underlying neural network. This problem could be tackled by tuning the network's hyperparameters which lies beyond the scope of this work.
-
 \begin{figure}[htbp]
 	\centerline{\includegraphics{mobile.png}}
 	\caption{Even for optimized number of training steps and basis points, the success rate does not exceed 80\%. Further increasing them leads to a performance breakdown.}
 	\label{fig5}
 \end{figure}
+
+For the mobile robot, we tried to optimize the success rate of the agent in an environment with ten randomly sampled obstacles. We first tried to find good initial parameters and always achieved a success rate of 70 to 80\%. To improve these numbers, we iteratively optimized the number of training steps and the number of basis points. As shown in Figure \ref{fig5}, neither the optimal number of training steps nor the optimal number of basis points led to an improvement. Interestingly, further increasing the number of training steps and basis points also could not improve the agent's performance. This most likely happens because of overfitting or exploding and vanishing gradients in the underlying neural network. This problem could be tackled by tuning the network's hyperparameters which lies beyond the scope of this work.
 
 \subsection{2 DoF Planar Robot Arm}
 
